@@ -74,4 +74,4 @@ Script is not very well optimised (especially when appending to arrays) and prob
   
 ## License
 
-This project is licensed under the GPLv3 License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details
