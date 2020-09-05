@@ -3,9 +3,9 @@
 .SYNOPSIS
   Fetches Microsoft 365 Endpoint Set data and adds them as Aliases in a WatchGuard Profile Configuration XML
 .NOTES
-  Version:        2.1
+  Version:        2.2
   Author:         Staja
-  Date:           2020-07-03
+  Date:           2020-09-06
   License:        GPLv3
 #>
 #-----------------------------------------------------------[Parameters]---------------------------------------------------------
@@ -207,6 +207,42 @@ Function ConvertTo-NetMask {
 
     process {
         ([IPAddress][UInt64][Convert]::ToUInt32(('1' * $MaskLength).PadRight(32, '0'), 2)).IPAddressToString
+    }
+}
+
+Function Get-WatchGuardDomainCompatibility {
+    <#
+    .SYNOPSIS
+        Checks if Domain is compatible with WatchGuard format
+    #>
+    Param(
+        [Parameter(Mandatory, Position = 1, ValueFromPipeline)]
+        $Domain
+    )
+    Process {
+        return $Domain -match "^(\*\.)?([a-zA-Z0-9_](([a-zA-Z0-9_-])*[a-zA-Z0-9_])?\.)+([a-zA-Z])+$"
+    }
+}
+
+Function ConvertTo-WatchGuardCompatibleDomain {
+    <#
+    .SYNOPSIS
+        Blindly makes a domain with a wildcard compliant with WatchGuard format
+    .DESCRIPTION
+        Converts domains such as *-files.sharepoint.com to *.sharepoint.com because WatchGuard cannot support partial wildcards.
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory, Position = 1, ValueFromPipeline)]
+        $Domain
+    )
+
+    Process {
+        if($Domain.StartsWith("*") -and -not $Domain.StartsWith("*.")) {
+            return "*" + $Domain.Substring($Domain.IndexOf("."))
+        } else {
+            return $Domain
+        }
     }
 }
 
@@ -627,20 +663,32 @@ foreach($ExistingM365EndpointSet in $ExistingM365EndpointSets) {
     $i = 1 # Address Group Counter for this M365 Endpoint Set
     
     # Create a new Address Group for each URL (domain) in the M365 Endpoint Set and add the Address Group to the Alias
+    $AddedAddressGroupDomains = @()
     foreach($EndpointURL in $ExistingM365EndpointSet.urls) {
         # address-group
-        $AddressGroupNode = Create-WGAddressGroupNodeWithSingleDomain -XmlDoc $WatchGuardConfig -AddressGroupName "$($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id).$($i).alm" -Domain $EndpointURL
+        $AddressGroupDomain = $EndpointURL
+        if(-not (Get-WatchGuardDomainCompatibility -Domain $EndpointURL)) {
+            # If it's existing, it should already be compatible, but just to be sure.
+            $AddressGroupDomain = ConvertTo-WatchGuardCompatibleDomain -Domain $EndpointURL
+            Write-LogEntry -Severity WARN -LogFilePath $LogFilePath "  $($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id): $($EndpointURL) is not compatible with WatchGuard address-group, fixing automatically to $($AddressGroupDomain)"
+        }
+        if(-not $AddedAddressGroupDomains.Contains($AddressGroupDomain)) {
+            $AddressGroupNode = Create-WGAddressGroupNodeWithSingleDomain -XmlDoc $WatchGuardConfig -AddressGroupName "$($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id).$($i).alm" -Domain $AddressGroupDomain
 
-        # Add new Address Group to the WatchGuard Profile Configuration
-        $WatchGuardConfig.profile.'address-group-list'.AppendChild($AddressGroupNode) | Out-Null
-        Write-LogEntry -Severity INFO -LogFilePath $LogFilePath -Message "  $($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id): New WG-AddressGroup for URL:$($EndpointURL)`r`n$($AddressGroupNode.InnerXml)"
+            # Add new Address Group to the WatchGuard Profile Configuration
+            $WatchGuardConfig.profile.'address-group-list'.AppendChild($AddressGroupNode) | Out-Null
+            Write-LogEntry -Severity INFO -LogFilePath $LogFilePath -Message "  $($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id): New WG-AddressGroup for URL:$($AddressGroupDomain)`r`n$($AddressGroupNode.InnerXml)"
 
-        # alias-member
-        $AliasMemberNode = Create-WGAliasMember -XmlDoc $WatchGuardConfig -Address $AddressGroupNode.name
+            # alias-member
+            $AliasMemberNode = Create-WGAliasMember -XmlDoc $WatchGuardConfig -Address $AddressGroupNode.name
         
-        # Add new Alias Member to existing Alias in the WatchGuard Profile Configuration
-        $AliasMemberListNode.AppendChild($AliasMemberNode) | Out-Null
-        $i = $i + 1
+            # Add new Alias Member to existing Alias in the WatchGuard Profile Configuration
+            $AliasMemberListNode.AppendChild($AliasMemberNode) | Out-Null
+            $AddedAddressGroupDomains += @($AddressGroupDomain)
+            $i = $i + 1
+        } else {
+            Write-LogEntry -Severity WARN -LogFilePath $LogFilePath "  $($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id): $($AddressGroupDomain) has already been added, skipping"
+        }
     }
 
     # Create a new Address Group for each IP/network in the M365 Endpoint Set and add the Address Group to the Alias
@@ -683,15 +731,26 @@ foreach($NewM365EndpointSet in $NewM365EndpointSets) {
     $i = 1 # Address Group Counter for this M365 Endpoint Set
 
     # Create a new Address Group for each URL (domain) in the M365 Endpoint Set and add the Address Group to the Alias
+    $AddedAddressGroupDomains = @()
     foreach($EndpointURL in $NewM365EndpointSet.urls) {
-        $AddressGroupNode = Create-WGAddressGroupNodeWithSingleDomain -XmlDoc $WatchGuardConfig -AddressGroupName "$($AliasPrefix)$($IdFormat -f $NewM365EndpointSet.id).$($i).alm" -Domain $EndpointURL
-        $WatchGuardConfig.profile.'address-group-list'.AppendChild($AddressGroupNode) | Out-Null
-        Write-LogEntry -Severity INFO -LogFilePath $LogFilePath -Message "  $($AliasPrefix)$($IdFormat -f $NewM365EndpointSet.id): New WG-AddressGroup for URL:$($EndpointURL)`r`n$($AddressGroupNode.InnerXml)"
+        $AddressGroupDomain = $EndpointURL
+        if(-not (Get-WatchGuardDomainCompatibility -Domain $EndpointURL)) {
+            $AddressGroupDomain = ConvertTo-WatchGuardCompatibleDomain -Domain $EndpointURL
+            Write-LogEntry -Severity WARN -LogFilePath $LogFilePath "  $($AliasPrefix)$($IdFormat -f $NewM365EndpointSet.id): $($EndpointURL) is not compatible with WatchGuard address-group, fixing automatically to $($AddressGroupDomain)"
+        }
+        if(-not $AddedAddressGroupDomains.Contains($AddressGroupDomain)) {
+            $AddressGroupNode = Create-WGAddressGroupNodeWithSingleDomain -XmlDoc $WatchGuardConfig -AddressGroupName "$($AliasPrefix)$($IdFormat -f $NewM365EndpointSet.id).$($i).alm" -Domain $AddressGroupDomain
+            $WatchGuardConfig.profile.'address-group-list'.AppendChild($AddressGroupNode) | Out-Null
+            Write-LogEntry -Severity INFO -LogFilePath $LogFilePath -Message "  $($AliasPrefix)$($IdFormat -f $NewM365EndpointSet.id): New WG-AddressGroup for URL:$($AddressGroupDomain)`r`n$($AddressGroupNode.InnerXml)"
 
-        $AliasMemberNode = Create-WGAliasMember -XmlDoc $WatchGuardConfig -Address $AddressGroupNode.name
-        $AliasMemberListNode.AppendChild($AliasMemberNode) | Out-Null
+            $AliasMemberNode = Create-WGAliasMember -XmlDoc $WatchGuardConfig -Address $AddressGroupNode.name
+            $AliasMemberListNode.AppendChild($AliasMemberNode) | Out-Null
 
-        $i = $i + 1
+            $AddedAddressGroupDomains += @($AddressGroupDomain)
+            $i = $i + 1
+        } else {
+            Write-LogEntry -Severity WARN -LogFilePath $LogFilePath "  $($AliasPrefix)$($IdFormat -f $ExistingM365EndpointSet.id): $($AddressGroupDomain) has already been added, skipping"
+        }
     }
 
     # Create a new Address Group for each IP/network in the M365 Endpoint Set and add the Address Group to the Alias
