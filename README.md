@@ -70,7 +70,7 @@ The script has defined a `$PortDefintions` which is an array of hashtables of fr
 
 The exact Web Service API is defined in the script as `$M365EndpointsAPI`, choose from the [available endpoints](https://docs.microsoft.com/en-us/office365/enterprise/office-365-endpoints), depending on what sort of tenant you have but most are probably going to be worldwide.
 
-WatchGuard cannot support domain address-group entries such as '*-files.sharepoint.com' so they will be converted to an overly-permissive compatible variant '*.sharepoint.com' which WatchGuard can accept, it will also check if such a correction exists in address-group already, before adding it again, to prevent dupes.
+WatchGuard cannot support domain address-group entries such as `*-files.sharepoint.com` or `autodiscover.*.onmicrosoft.com` so they will be converted to an overly-permissive compatible variant, `*.sharepoint.com` or `*.onmicrosoft.com` respectively, which WatchGuard can accept. It will also check if such a correction exists in address-group already, before adding it again, to prevent dupes.
 
 Script is not very well optimised (especially when appending to arrays) and probably some of the XML operations too.
   
