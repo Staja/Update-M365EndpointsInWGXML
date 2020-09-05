@@ -3,7 +3,7 @@
 .SYNOPSIS
   Fetches Microsoft 365 Endpoint Set data and adds them as Aliases in a WatchGuard Profile Configuration XML
 .NOTES
-  Version:        2.2
+  Version:        2.3
   Author:         Staja
   Date:           2020-09-06
   License:        GPLv3
@@ -238,9 +238,21 @@ Function ConvertTo-WatchGuardCompatibleDomain {
     )
 
     Process {
-        if($Domain.StartsWith("*") -and -not $Domain.StartsWith("*.")) {
-            return "*" + $Domain.Substring($Domain.IndexOf("."))
+        if($Domain.Contains("*") -and -not $Domain.StartsWith("*.")) {
+            # We're relying on Microsoft not to give us anything too crazy
+            $NewDomainParts = @()
+            $FoundWildcardDomainPart = $false
+            foreach($DomainPart in $Domain.Split(".")) {
+                if($DomainPart.Contains("*")) {
+                    $NewDomainParts = @("*")
+                    $FoundWildcardDomainPart = $true
+                } elseif($FoundWildcardDomainPart) {
+                    $NewDomainParts += @($DomainPart)
+                }
+            }
+            return $NewDomainParts -join "."
         } else {
+            # This is bad, we didn't actually fix it
             return $Domain
         }
     }
