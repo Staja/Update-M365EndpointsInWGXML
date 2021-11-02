@@ -2,6 +2,14 @@
 
 Proof-of-concept script that creates, or updates, aliases for each Microsoft 365 Endpoint Set from [Office 365 IP Address and URL Web Service](https://docs.microsoft.com/en-us/office365/enterprise/urls-and-ip-address-ranges) in a specified WatchGuard&#8482; Profile Configuration XML file.
 
+## Note for WatchGuard Administrators and I.T. Managers
+**If you are frustrated with the lack of this functionality in your WatchGuard products then please make sure you let WatchGuard know that this feature is something you desire, this can be done by:**
+* **Adding your support by commenting on [this WatchGuard Community thread](https://community.watchguard.com/watchguard-community/discussion/239/office-365-in-whitelisted-environment), and/or;**
+* **If you are a direct WatchGuard customer, informing you Account Manager that this is a feature you wish to see implemented, and/or;**
+* **If you a WatchGuard customer throuh a Partner, informing your Account Manager to pass on your feedback to WatchGuard via WatchGuard Partner Channels.**
+
+If some random guy can do this over a weekend against an undocumented XML schema, a company like WatchGuard should be able to implement this natively.
+
 ## Prerequisites
 
 This script has only been tested with PowerShell 5 on the Windows platform.
